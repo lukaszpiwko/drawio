@@ -52,11 +52,11 @@
 		<replaceregexp file="${basedir}/.tmp1.xml" match="'" flags="g" replace="\\\\'" byline="true"/>
 		
 		<delete file="${basedir}/Graph-Stylesheet.js"/>
-		<echo file="${basedir}/Graph-Stylesheet.js">Graph.prototype.defaultThemes['default-style2'] = mxUtils.parseXml('</echo>
+		<echo file="${basedir}/Graph-Stylesheet.js">Graph.prototype.defaultThemes['default-style2'] = mxUtils.parseXml(`</echo>
 		<concat destfile="${basedir}/Graph-Stylesheet.js" fixlastline="no" append="true">
 			<filelist dir="${basedir}" files=".tmp1.xml"/>
-    		</concat>
-		<echo file="${basedir}/Graph-Stylesheet.js" append="true">').documentElement;</echo>
+		</concat>
+		<echo file="${basedir}/Graph-Stylesheet.js" append="true">`).documentElement;</echo>
 
 		<delete file="${basedir}/.tmp1.js"/>
 		<copy file="${war.dir}/styles/dark-default.xml" tofile="${basedir}/.tmp1.xml" overwrite="true"/>
@@ -64,11 +64,11 @@
 		<replaceregexp file="${basedir}/.tmp1.xml" match="\t" flags="g" replace=""/>
 		<replaceregexp file="${basedir}/.tmp1.xml" match="'" flags="g" replace="\\\\'" byline="true"/>
 
-		<echo file="${basedir}/Graph-Stylesheet.js" append="true">Graph.prototype.defaultThemes['darkTheme'] = mxUtils.parseXml('</echo>
+		<echo file="${basedir}/Graph-Stylesheet.js" append="true">Graph.prototype.defaultThemes['darkTheme'] = mxUtils.parseXml(`</echo>
 		<concat destfile="${basedir}/Graph-Stylesheet.js" fixlastline="no" append="true">
 			<filelist dir="${basedir}" files=".tmp1.xml"/>
-    		</concat>
-		<echo file="${basedir}/Graph-Stylesheet.js" append="true">').documentElement;</echo>
+		</concat>
+		<echo file="${basedir}/Graph-Stylesheet.js" append="true">`).documentElement;</echo>
 
 		
 		<delete file="${basedir}/.tmp2.js"/>
@@ -77,11 +77,11 @@
 		<replaceregexp file="${basedir}/.tmp2.xml" match="'" flags="g" replace="\\\\'" byline="true"/>
 		
 		<delete file="${basedir}/Graph-Resources.js"/>
-		<echo file="${basedir}/Graph-Resources.js">mxResources.parse('</echo>
+		<echo file="${basedir}/Graph-Resources.js">mxResources.parse(`</echo>
 		<concat destfile="${basedir}/Graph-Resources.js" fixlastline="no" append="true">
 			<filelist dir="${basedir}" files=".tmp2.xml"/>
-    		</concat>
-		<echo file="${basedir}/Graph-Resources.js" append="true">');</echo>
+		</concat>
+		<echo file="${basedir}/Graph-Resources.js" append="true">`);</echo>
 		
 		<jscomp compilationLevel="simple" forceRecompile="true" debug="false" output="${basedir}/grapheditor.min.js">
 			<sources dir="${grapheditor.dir}">
@@ -118,7 +118,9 @@
 				<file name="Sidebar-Basic.js" />
 				<file name="Sidebar-Bootstrap.js" />
 				<file name="Sidebar-BPMN.js" />
+				<file name="Sidebar-C4.js" />
 				<file name="Sidebar-Cabinet.js" />
+				<file name="Sidebar-Cisco19.js" />
 				<file name="Sidebar-CiscoSafe.js" />
 				<file name="Sidebar-Citrix.js" />
 				<file name="Sidebar-Cumulus.js" />
@@ -135,6 +137,7 @@
 				<file name="Sidebar-Infographic.js" />
 				<file name="Sidebar-Ios.js" />
 				<file name="Sidebar-Ios7.js" />
+				<file name="Sidebar-Kubernetes.js" />
 				<file name="Sidebar-LeanMapping.js" />
 				<file name="Sidebar-Mockup.js" />
 				<file name="Sidebar-MSCAE.js" />
@@ -275,6 +278,10 @@
 				<file name="Trees.js" />
 				<file name="Minimal.js" />
 				<file name="DistanceGuides.js" />
+				<file name="mxRuler.js" />
+				<file name="mxFreehand.js" />
+				<file name="DrawioUser.js" />
+				<file name="DrawioComment.js" />
 			</sources>
 				
 			<sources dir="${basedir}">
@@ -287,6 +294,7 @@
 			<filelist dir="${war.dir}/js/sanitizer" files="sanitizer.min.js"/>
 			<filelist dir="${war.dir}/js/cryptojs" files="aes.min.js"/>
 			<filelist dir="${war.dir}/js/deflate" files="pako.min.js"/>
+			<filelist dir="${war.dir}/js/croppie" files="croppie.min.js"/>
 			<filelist dir="${basedir}" files="client.min.js,grapheditor.min.js,sidebar.min.js,.tmp1.js"/>
     	</concat>
 
@@ -358,6 +366,9 @@
 				<file name="TrelloFile.js" />
 				<file name="TrelloLibrary.js" />
 				<file name="TrelloClient.js" />
+				<file name="GitLabFile.js" />
+				<file name="GitLabLibrary.js" />
+				<file name="GitLabClient.js" />
 				<file name="DrawioComment.js" />
 				<file name="DriveComment.js" />
 			</sources>
@@ -369,6 +380,8 @@
 				<file name="Trees.js" />
 				<file name="Minimal.js" />
 				<file name="DistanceGuides.js" />
+				<file name="mxRuler.js" />
+				<file name="mxFreehand.js" />
 			</sources>
 		</jscomp>
 
@@ -377,6 +390,7 @@
 			<filelist dir="${war.dir}/js/sanitizer" files="sanitizer.min.js"/>
 			<filelist dir="${war.dir}/js/cryptojs" files="aes.min.js"/>
 			<filelist dir="${war.dir}/js/deflate" files="pako.min.js"/>
+			<filelist dir="${war.dir}/js/croppie" files="croppie.min.js"/>
 			<filelist dir="${basedir}" files="client.min.js,grapheditor.min.js,sidebar.min.js,.tmp1.js"/>
     	</concat>
 
@@ -405,6 +419,7 @@
 			<classpath refid="javac.class.path" />
 		</javac>
 		<copy todir="${javac.dir}" file="${src.dir}/log4j.properties" />
+		<copy todir="${javac.dir}/com/mxgraph/io/gliffy/importer" file="${src.dir}/com/mxgraph/io/gliffy/importer/gliffyTranslation.properties" />
 	</target>
 
 	<target name="clean" description="Cleans build directories">

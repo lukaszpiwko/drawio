@@ -86,7 +86,7 @@ DrawioFileSync = function(file)
 				
 				if (user != null)
 				{
-					join.name = user.displayName;
+					join.name = encodeURIComponent(user.displayName);
 					join.uid = user.id;
 				}
 
@@ -96,13 +96,15 @@ DrawioFileSync = function(file)
 				this.file.stats.msgSent++;
 				this.announced = true;
 			}
-
-			// Catchup on any lost edits
-			this.fileChangedNotify();
+			else
+			{
+				// Catchup on any lost edits
+				this.fileChangedNotify();
+			}
 		}
 	});
 	
-	// Listens to remove messages
+	// Listens to messages
 	this.changeListener = mxUtils.bind(this, function(data)
 	{
 		this.file.stats.msgReceived++;
@@ -135,10 +137,23 @@ DrawioFileSync = function(file)
 			}
 			catch (e)
 			{
-				if (window.console != null && urlParams['test'] == '1')
+				// Checks if file was changed
+				if (this.isConnected())
 				{
-					console.log(e);
+					this.fileChangedNotify();
 				}
+				
+				// NOTE: Probably UTF16 in username for join/leave message causing this
+//				var len = (data != null) ? data.length : 'null';
+//				
+//				EditorUi.logError('Protocol Error ' + e.message,
+//					null, 'data_' + len + '_file_' + this.file.getHash() +
+//					'_client_' + this.clientId);
+//				
+//				if (window.console != null)
+//				{
+//					console.log(e);
+//				}
 			}
 		}
 	});
@@ -193,12 +208,12 @@ DrawioFileSync.prototype.maxCatchupRetries = 15;
 /**
  * Specifies if descriptor change events should be ignored.
  */
-DrawioFileSync.prototype.maxCacheReadyRetries = 2;
+DrawioFileSync.prototype.maxCacheReadyRetries = 1;
 
 /**
  * Specifies if descriptor change events should be ignored.
  */
-DrawioFileSync.prototype.cacheReadyDelay = 500;
+DrawioFileSync.prototype.cacheReadyDelay = 700;
 
 /**
  * Inactivity timeout is 30 minutes.
@@ -249,7 +264,7 @@ DrawioFileSync.prototype.start = function()
 			{
 				this.pusher.connect();
 				this.channel = this.pusher.subscribe(this.channelId);
-				EditorUi.debug('Sync.start', [this]);
+				EditorUi.debug('Sync.start', [this, 'v' + DrawioFileSync.PROTOCOL]);
 			}
 			catch (e)
 			{
@@ -335,7 +350,7 @@ DrawioFileSync.prototype.updateOnlineState = function()
 			elt.style.display = 'inline-block';
 			elt.style.verticalAlign = 'bottom';
 			elt.style.color = '#666';
-			elt.style.top = '8px';
+			elt.style.top = '6px';
 			elt.style.right = (uiTheme != 'atlas') ?  '70px' : '50px';
 			elt.style.padding = '2px';
 			elt.style.fontSize = '8pt';
@@ -541,7 +556,7 @@ DrawioFileSync.prototype.handleMessageData = function(data)
 		if (data.name != null)
 		{
 			this.lastMessage = mxResources.get((data.a == 'join') ?
-				'userJoined' : 'userLeft', [data.name]);
+				'userJoined' : 'userLeft', [decodeURIComponent(data.name)]);
 			this.resetUpdateStatusThread();
 			this.updateStatus();
 		}
@@ -594,7 +609,7 @@ DrawioFileSync.prototype.fileChangedNotify = function()
 			}), mxUtils.bind(this, function()
 			{
 				return !this.file.savingFile && this.notifyThread != thread;
-			}));
+			}), true);
 		}
 	}
 };
@@ -602,7 +617,7 @@ DrawioFileSync.prototype.fileChangedNotify = function()
 /**
  * Adds the listener for automatically saving the diagram for local changes.
  */
-DrawioFileSync.prototype.fileChanged = function(success, error, abort)
+DrawioFileSync.prototype.fileChanged = function(success, error, abort, lazy)
 {
 	var thread = window.setTimeout(mxUtils.bind(this, function()
 	{
@@ -636,7 +651,7 @@ DrawioFileSync.prototype.fileChanged = function(success, error, abort)
 				}), error);
 			}
 		}
-	}), 0);
+	}), (lazy) ? this.cacheReadyDelay : 0);
 	
 	this.notifyThread = thread;
 	
@@ -653,7 +668,7 @@ DrawioFileSync.prototype.reloadDescriptor = function()
 		if (desc != null)
 		{
 			// Forces data to be updated
-			this.file.setDescriptorEtag(desc, this.file.getCurrentEtag());
+			this.file.setDescriptorRevisionId(desc, this.file.getCurrentRevisionId());
 			this.updateDescriptor(desc);
 			this.fileChangedNotify();
 		}
@@ -684,14 +699,15 @@ DrawioFileSync.prototype.updateDescriptor = function(desc)
  */
 DrawioFileSync.prototype.catchup = function(desc, success, error, abort)
 {
-	if (abort == null || !abort())
+	if (desc != null && (abort == null || !abort()))
 	{
-		var secret = this.file.getDescriptorSecret(desc);
-		var etag = this.file.getDescriptorEtag(desc);
-		var current = this.file.getCurrentEtag();
+		var etag = this.file.getDescriptorRevisionId(desc);
+		var current = this.file.getCurrentRevisionId();
 		
 		if (current == etag)
 		{
+			this.file.patchDescriptor(this.file.getDescriptor(), desc);
+			
 			if (success != null)
 			{
 				success();
@@ -706,6 +722,8 @@ DrawioFileSync.prototype.catchup = function(desc, success, error, abort)
 		}
 		else
 		{
+			var secret = this.file.getDescriptorSecret(desc);
+			
 			// Cache entry may not have been uploaded to cache before new
 			// etag is visible to client so retry once after cache miss
 			var cacheReadyRetryCount = 0;
@@ -716,7 +734,7 @@ DrawioFileSync.prototype.catchup = function(desc, success, error, abort)
 				if (abort == null || !abort())
 				{
 					// Ignores patch if shadow has changed
-					if (current != this.file.getCurrentEtag())
+					if (current != this.file.getCurrentRevisionId())
 					{
 						if (success != null)
 						{
@@ -739,7 +757,7 @@ DrawioFileSync.prototype.catchup = function(desc, success, error, abort)
 							acceptResponse = false;
 							this.reload(success, error, abort);
 						}), this.ui.timeout);
-						
+
 						mxUtils.get(EditorUi.cacheUrl + '?id=' + encodeURIComponent(this.channelId) +
 							'&from=' + encodeURIComponent(current) + '&to=' + encodeURIComponent(etag) +
 							((secret != null) ? '&secret=' + encodeURIComponent(secret) : ''),
@@ -751,7 +769,7 @@ DrawioFileSync.prototype.catchup = function(desc, success, error, abort)
 							if (acceptResponse && (abort == null || !abort()))
 							{
 								// Ignores patch if shadow has changed
-								if (current != this.file.getCurrentEtag())
+								if (current != this.file.getCurrentRevisionId())
 								{
 									if (success != null)
 									{
@@ -823,12 +841,13 @@ DrawioFileSync.prototype.catchup = function(desc, success, error, abort)
 											this.merge(temp, checksum, desc, success, error, abort);
 										}
 										// Retries if cache entry was not yet there
-										else if (cacheReadyRetryCount <= this.maxCacheReadyRetries &&
+										else if (cacheReadyRetryCount <= this.maxCacheReadyRetries - 1 &&
 											!failed && req.getStatus() != 401)
 										{
 											cacheReadyRetryCount++;
 											this.file.stats.cacheMiss++;
-											window.setTimeout(doCatchup, (cacheReadyRetryCount + 1) * this.cacheReadyDelay);
+											window.setTimeout(doCatchup, (cacheReadyRetryCount + 1) *
+												this.cacheReadyDelay);
 										}
 										else
 										{
@@ -897,7 +916,7 @@ DrawioFileSync.prototype.merge = function(patches, checksum, desc, success, erro
 			this.ui.diffPages(this.file.shadowPages,
 			this.ui.pages) : null;
 		var ignored = this.file.ignorePatches(patches);
-		var etag = this.file.getDescriptorEtag(desc);
+		var etag = this.file.getDescriptorRevisionId(desc);
 
 		if (!ignored)
 		{
@@ -912,7 +931,8 @@ DrawioFileSync.prototype.merge = function(patches, checksum, desc, success, erro
 			if (urlParams['test'] == '1')
 			{
 				EditorUi.debug('Sync.merge', [this],
-					'from', this.file.getCurrentEtag(), 'to', etag,
+					'from', this.file.getCurrentRevisionId(), 'to', etag,
+					'etag', this.file.getDescriptorEtag(desc),
 					'backup', this.file.backupPatch,
 					'attempt', this.catchupRetryCount,
 					'patches', patches,
@@ -922,7 +942,7 @@ DrawioFileSync.prototype.merge = function(patches, checksum, desc, success, erro
 			// Compares the checksum
 			if (checksum != null && checksum != current)
 			{
-				var from = this.ui.hashValue(this.file.getCurrentEtag());
+				var from = this.ui.hashValue(this.file.getCurrentRevisionId());
 				var to = this.ui.hashValue(etag);
 				
 				this.file.checksumError(error, patches, 'From: ' + from + '\nTo: ' + to +
@@ -986,7 +1006,7 @@ DrawioFileSync.prototype.merge = function(patches, checksum, desc, success, erro
 		{
 			if (this.file.errorReportsEnabled)
 			{
-				var from = this.ui.hashValue(this.file.getCurrentEtag());
+				var from = this.ui.hashValue(this.file.getCurrentRevisionId());
 				var to = this.ui.hashValue(etag);
 				
 				this.file.sendErrorReport('Error in merge',
@@ -1024,7 +1044,7 @@ DrawioFileSync.prototype.descriptorChanged = function(etag)
 	{
 		var msg = this.objectToString(this.createMessage({a: 'desc',
 			m: this.lastModified.getTime()}));
-		var current = this.file.getCurrentEtag();
+		var current = this.file.getCurrentRevisionId();
 		var data = this.objectToString({});
 
 		mxUtils.post(EditorUi.cacheUrl, this.getIdParameters() +
@@ -1091,8 +1111,8 @@ DrawioFileSync.prototype.fileSaved = function(pages, lastDesc, success, error)
 			var diff = this.ui.diffPages(shadow, pages);
 			
 			// Data is stored in cache and message is sent to all listeners
-			var etag = this.file.getDescriptorEtag(lastDesc);
-			var current = this.file.getCurrentEtag();
+			var etag = this.file.getDescriptorRevisionId(lastDesc);
+			var current = this.file.getCurrentRevisionId();
 			
 			var data = this.objectToString(this.createMessage({patch: diff, checksum: checksum}));
 			var msg = this.objectToString(this.createMessage({m: this.lastModified.getTime()}));
@@ -1113,8 +1133,8 @@ DrawioFileSync.prototype.fileSaved = function(pages, lastDesc, success, error)
 			if (urlParams['test'] == '1')
 			{
 				EditorUi.debug('Sync.fileSaved', [this],
-					'from', etag, 'to', current, data.length,
-					'bytes', 'diff', diff, 'checksum', checksum);
+					'from', etag, 'to', current, 'etag', this.file.getCurrentEtag(),
+					data.length, 'bytes', 'diff', diff, 'checksum', checksum);
 			}
 			
 			// Logs successull diff
@@ -1243,7 +1263,7 @@ DrawioFileSync.prototype.destroy = function()
 		
 		if (user != null)
 		{
-			leave.name = user.displayName;
+			leave.name = encodeURIComponent(user.displayName);
 			leave.uid = user.id;
 		}
 		

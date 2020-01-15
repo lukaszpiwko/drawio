@@ -216,13 +216,13 @@ mxStencilRegistry.allowEval = false;
 				var remote = electron.remote;
 				var dialog = remote.dialog;
 
-		        var paths = dialog.showOpenDialog({properties: ['openFile']});
+		        var paths = dialog.showOpenDialogSync({properties: ['openFile']});
 			           
 		        if (paths !== undefined && paths[0] != null)
 		        {
 		        	var path = paths[0];
 		        	var asImage = /\.png$/i.test(path) || /\.gif$/i.test(path) || /\.jpe?g$/i.test(path);
-		        	var encoding = (asImage || /\.vsdx$/i.test(path) || /\.vssx$/i.test(path)) ?
+		        	var encoding = (asImage || /\.pdf$/i.test(path) || /\.vsdx$/i.test(path) || /\.vssx$/i.test(path)) ?
 		        		'base64' : 'utf-8';
 
 					if (editorUi.spinner.spin(document.body, mxResources.get('loading')))
@@ -278,7 +278,16 @@ mxStencilRegistry.allowEval = false;
 									}
 									else
 									{
-										if (/\.png$/i.test(path))
+										if (/\.pdf$/i.test(path))
+									    {
+											var tmp = Editor.extractGraphModelFromPdf(data);
+											
+											if (tmp != null)
+											{
+												data = tmp;
+											}
+							    		}
+										else if (/\.png$/i.test(path))
 										{
 											var tmp = editorUi.extractGraphModelFromPng(data);
 											
@@ -410,6 +419,34 @@ mxStencilRegistry.allowEval = false;
 		{
 			this.loadArgs(argsObj)
 		})
+
+		var editorUi = this;
+		
+		ipcRenderer.on('export-vsdx', (event, argsObj) =>
+		{
+			var file = new LocalFile(editorUi, argsObj.xml, '');
+			
+			editorUi.fileLoaded(file);
+
+			try
+			{
+				editorUi.saveData = function(filename, format, data, mimeType, base64Encoded)
+				{
+					ipcRenderer.send('export-vsdx-finished', data);
+				};
+				
+				var expSuccess = new VsdxExport(editorUi).exportCurrentDiagrams();
+
+				if (!expSuccess)
+				{
+					ipcRenderer.send('export-vsdx-finished', null);
+				}
+			}
+			catch (e)
+			{
+				ipcRenderer.send('export-vsdx-finished', null);
+			}
+		})	
 	}
 	
 	App.prototype.loadArgs = function(argsObj)
@@ -569,7 +606,7 @@ mxStencilRegistry.allowEval = false;
 		var remote = electron.remote;
 		var dialog = remote.dialog;
 
-        var paths = dialog.showOpenDialog({properties: ['openFile']});
+        var paths = dialog.showOpenDialogSync({properties: ['openFile']});
 	           
         if (paths !== undefined && paths[0] != null)
         {
@@ -606,7 +643,7 @@ mxStencilRegistry.allowEval = false;
 		var index = path.lastIndexOf('.png');
 		var isPng = index > -1 && index == path.length - 4;
 		var isVsdx = /\.vsdx$/i.test(path) || /\.vssx$/i.test(path);
-		var encoding = isVsdx? null : (isPng ? 'base64' : 'utf-8');
+		var encoding = isVsdx? null : ((isPng || /\.pdf$/i.test(path)) ? 'base64' : 'utf-8');
 
 		fs.readFile(path, encoding, mxUtils.bind(this, function (e, data)
 		{
@@ -621,7 +658,7 @@ mxStencilRegistry.allowEval = false;
 				fileEntry.name = path.replace(/^.*[\\\/]/, '');
 				fileEntry.type = encoding;
 
-				//VSDX files are imported instead of being open
+				// VSDX and PDF files are imported instead of being opened
 				if (isVsdx)
 				{
 					var name = fileEntry.name;
@@ -666,8 +703,19 @@ mxStencilRegistry.allowEval = false;
 					
 					return;
 				}
-				
-				if (isPng)
+				else if (/\.pdf$/i.test(path))
+			    {
+					var tmp = Editor.extractGraphModelFromPdf('data:application/pdf;base64,' + data);
+					
+					if (tmp != null)
+					{
+						var name = fileEntry.name;
+						fn(null, tmp, null, name.substring(0, name.lastIndexOf('.')) + '.drawio');
+						
+						return;
+					}
+	    		}
+				else if (isPng)
 				{
 					// Detecting png by extension. Would need https://github.com/mscdex/mmmagic
 					// to do it by inspection
@@ -823,12 +871,13 @@ mxStencilRegistry.allowEval = false;
 	
 	// Restores default implementation of open with autosave
 	LocalFile.prototype.open = DrawioFile.prototype.open;
-
+	
 	LocalFile.prototype.save = function(revision, success, error, unloading, overwrite)
 	{
-		DrawioFile.prototype.save.apply(this, arguments);
-		
-		this.saveFile(revision, success, error, unloading, overwrite);
+		DrawioFile.prototype.save.apply(this, [revision, mxUtils.bind(this, function()
+		{
+			this.saveFile(revision, success, error, unloading, overwrite);
+		}), error, unloading, overwrite]);
 	};
 
 	LocalFile.prototype.isConflict = function(stat)
@@ -853,7 +902,7 @@ mxStencilRegistry.allowEval = false;
 					this.savingFile = true;
 					var fs = require('fs');
 					
-					var errorWrapper = mxUtils.bind(this, function()
+					var errorWrapper = mxUtils.bind(this, function(e)
 					{
 						this.savingFile = false;
 						this.isModified = prevModified;
@@ -861,9 +910,11 @@ mxStencilRegistry.allowEval = false;
 						
 						if (error != null)
 						{
-	        				error();
+	        				error(e);
 						}
 					});
+					
+					var retryCount = 0;
 					
 					var writeFile = mxUtils.bind(this, function()
 					{
@@ -874,7 +925,9 @@ mxStencilRegistry.allowEval = false;
 						}
 						else
 						{
-							fs.writeFile(this.fileObject.path, data, enc || this.fileObject.encoding,
+							var writeEnc = enc || this.fileObject.encoding;
+							
+							fs.writeFile(this.fileObject.path, data, writeEnc,
 								mxUtils.bind(this, function (e)
 						    {
 				        		if (e)
@@ -891,20 +944,40 @@ mxStencilRegistry.allowEval = false;
 						        		}
 										else
 										{
-											this.savingFile = false;
-											this.isModified = prevModified;
-											var lastDesc = this.stat;
-											this.stat = stat2;
+											// Workaround for possible writing errors is to check the written
+											// contents of the file and retry 3 times before showing an error
+											var writtenData = fs.readFileSync(this.fileObject.path, writeEnc);
 											
-											this.fileSaved(savedData, lastDesc, mxUtils.bind(this, function()
+											if (data != writtenData)
 											{
-												this.contentChanged();
+												retryCount++;
 												
-												if (success != null)
+												if (retryCount < 3)
 												{
-													success();
+													writeFile();
 												}
-											}), error);
+												else
+												{
+													errorWrapper({message: mxResources.get('errorSavingFile')});
+												}
+											}
+											else
+											{
+												this.savingFile = false;
+												this.isModified = prevModified;
+												var lastDesc = this.stat;
+												this.stat = stat2;
+												
+												this.fileSaved(savedData, lastDesc, mxUtils.bind(this, function()
+												{
+													this.contentChanged();
+													
+													if (success != null)
+													{
+														success();
+													}
+												}), error);
+											}
 										}
 									}));
 				        		}
@@ -956,7 +1029,7 @@ mxStencilRegistry.allowEval = false;
 				var remote = electron.remote;
 				var dialog = remote.dialog;
 	
-				var path = dialog.showSaveDialog({defaultPath: this.title});
+				var path = dialog.showSaveDialogSync({defaultPath: this.title});
 	
 		        if (path != null)
 		        {
@@ -992,7 +1065,7 @@ mxStencilRegistry.allowEval = false;
 			filename += '.drawio';
 		}
 		
-		var path = dialog.showSaveDialog({defaultPath: filename});
+		var path = dialog.showSaveDialogSync({defaultPath: filename});
         
         if (path != null)
         {
@@ -1157,11 +1230,11 @@ mxStencilRegistry.allowEval = false;
 				{
 					this.handleError({message: mxResources.get('errorSavingFile')});
 				}
-			}), function(resp)
+			}), mxUtils.bind(this, function(resp)
 			{
 				this.spinner.stop();
 				this.handleError(resp);
-			});
+			}));
 		}
 	};
 
@@ -1207,9 +1280,10 @@ mxStencilRegistry.allowEval = false;
 	if (mxIsElectron5)
 	{
 		//Direct export to pdf
-		EditorUi.prototype.createDownloadRequest = function(filename, format, ignoreSelection, base64, transparent, currentPage)
+		EditorUi.prototype.createDownloadRequest = function(filename, format, ignoreSelection, base64, transparent, currentPage, scale, border, grid)
 		{
-			var bounds = this.editor.graph.getGraphBounds();
+			var graph = this.editor.graph;
+			var bounds = graph.getGraphBounds();
 			
 			// Exports only current page for images that does not contain file data, but for
 			// the other formats with XML included or pdf with all pages, we need to send the complete data and use
@@ -1249,11 +1323,26 @@ mxStencilRegistry.allowEval = false;
 	       		}
 	       	}
 			
-			var bg = this.editor.graph.background;
+			var bg = graph.background;
 			
 			if (format == 'png' && transparent)
 			{
 				bg = mxConstants.NONE;
+			}
+			else if (!transparent && (bg == null || bg == mxConstants.NONE))
+			{
+				bg = '#ffffff';
+			}
+			
+			var extras = {globalVars: graph.getExportVariables()};
+			
+			if (grid)
+			{
+				extras.grid = {
+					size: graph.gridSize,
+					steps: graph.view.gridSteps,
+					color: graph.view.gridColor
+				};
 			}
 			
 			return new mxElectronRequest('export', {
@@ -1264,14 +1353,17 @@ mxStencilRegistry.allowEval = false;
 				filename: (filename != null) ? filename : null,
 				allPages: allPages,
 				base64: base64,
-				embedXml: embed
+				embedXml: embed,
+				extras: encodeURIComponent(JSON.stringify(extras)),
+				scale: scale,
+				border: border
 			});
 		};
 		
 		//Export Dialog Pdf case
 		var origExportFile = ExportDialog.exportFile;
 		
-		ExportDialog.exportFile = function(editorUi, name, format, bg, s, b)
+		ExportDialog.exportFile = function(editorUi, name, format, bg, s, b, dpi)
 		{
 			var graph = editorUi.editor.graph;
 			
@@ -1289,20 +1381,41 @@ mxStencilRegistry.allowEval = false;
 				if (data.length <= MAX_REQUEST_SIZE && w * h < MAX_AREA)
 				{
 					editorUi.hideDialog();
-					editorUi.saveRequest(name, format,
-						function(newTitle, base64)
+					
+					if ((format == 'png' || format == 'jpg' || format == 'jpeg') && editorUi.isExportToCanvas())
+					{
+						if (format == 'png')
 						{
-							return new mxElectronRequest('export', {
-								format: format,
-								xml: data,
-								bg: (bg != null) ? bg : mxConstants.NONE,
-								filename: (newTitle != null) ? newTitle : null,
-								w: w,
-								h: h,
-								border: b,
-								base64: (base64 || '0')
-							}); 
-						});
+							editorUi.exportImage(s, bg == null || bg == 'none', true,
+						   		false, false, b, true, false, null, null, dpi);
+						}
+						else 
+						{
+							editorUi.exportImage(s, false, true,
+								false, false, b, true, false, 'jpeg');
+						}
+					}
+					else 
+					{
+						var extras = {globalVars: graph.getExportVariables()};
+						
+						editorUi.saveRequest(name, format,
+							function(newTitle, base64)
+							{
+								return new mxElectronRequest('export', {
+									format: format,
+									xml: data,
+									bg: (bg != null) ? bg : mxConstants.NONE,
+									filename: (newTitle != null) ? newTitle : null,
+									w: w,
+									h: h,
+									border: b,
+									base64: (base64 || '0'),
+									extras: JSON.stringify(extras),
+									dpi: dpi > 0? dpi : null
+								}); 
+							});
+					}
 				}
 				else
 				{
@@ -1368,7 +1481,7 @@ mxStencilRegistry.allowEval = false;
 			};
 			
 			dlgConfig['filters'] = filters;
-			var path = dialog.showSaveDialog(dlgConfig);
+			var path = dialog.showSaveDialogSync(dlgConfig);
 	
 	        if (path != null)
 	        {

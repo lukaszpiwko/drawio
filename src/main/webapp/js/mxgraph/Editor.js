@@ -215,6 +215,11 @@ Editor.fullscreenLargeImage = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACA
 Editor.ctrlKey = (mxClient.IS_MAC) ? 'Cmd' : 'Ctrl';
 
 /**
+ * Specifies the image URL to be used for the transparent background.
+ */
+Editor.hintOffset = 20;
+
+/**
  * Specifies if the diagram should be saved automatically if possible. Default
  * is true.
  */
@@ -441,7 +446,7 @@ Editor.prototype.readGraphState = function(node)
 		this.graph.pageScale = mxGraph.prototype.pageScale;
 	}
 
-	if (!this.graph.isLightboxView())
+	if (!this.graph.isLightboxView() && !this.graph.isViewer())
 	{
 		var pv = node.getAttribute('page');
 	
@@ -745,7 +750,7 @@ OpenFile.prototype.cancel = function(cancel)
 /**
  * Basic dialogs that are available in the viewer (print dialog).
  */
-function Dialog(editorUi, elt, w, h, modal, closable, onClose, noScroll, transparent, onResize)
+function Dialog(editorUi, elt, w, h, modal, closable, onClose, noScroll, transparent, onResize, ignoreBgClick)
 {
 	var dx = 0;
 	
@@ -762,8 +767,14 @@ function Dialog(editorUi, elt, w, h, modal, closable, onClose, noScroll, transpa
 	var w0 = w;
 	var h0 = h;
 	
-	// clientHeight check is attempted fix for print dialog offset in viewer lightbox
 	var ds = mxUtils.getDocumentSize();
+	
+	// Workaround for print dialog offset in viewer lightbox
+	if (window.innerHeight != null)
+	{
+		ds.height = window.innerHeight;
+	}
+	
 	var dh = ds.height;
 	var left = Math.max(1, Math.round((ds.width - w - 64) / 2));
 	var top = Math.max(1, Math.round((dh - h - editorUi.footerHeight) / 3));
@@ -850,10 +861,22 @@ function Dialog(editorUi, elt, w, h, modal, closable, onClose, noScroll, transpa
 		document.body.appendChild(img);
 		this.dialogImg = img;
 		
-		mxEvent.addGestureListeners(this.bg, null, null, mxUtils.bind(this, function(evt)
+		if (!ignoreBgClick)
 		{
-			editorUi.hideDialog(true);
-		}));
+			var mouseDownSeen = false;
+			
+			mxEvent.addGestureListeners(this.bg, mxUtils.bind(this, function(evt)
+			{
+				mouseDownSeen = true;
+			}), null, mxUtils.bind(this, function(evt)
+			{
+				if (mouseDownSeen)
+				{
+					editorUi.hideDialog(true);
+					mouseDownSeen = false;
+				}
+			}));
+		}
 	}
 	
 	this.resizeListener = mxUtils.bind(this, function()
@@ -1884,7 +1907,8 @@ PageSetupDialog.getFormats = function()
 {
 	return [{key: 'letter', title: 'US-Letter (8,5" x 11")', format: mxConstants.PAGE_FORMAT_LETTER_PORTRAIT},
 	        {key: 'legal', title: 'US-Legal (8,5" x 14")', format: new mxRectangle(0, 0, 850, 1400)},
-	        {key: 'tabloid', title: 'US-Tabloid (279 mm x 432 mm)', format: new mxRectangle(0, 0, 1100, 1700)},
+	        {key: 'tabloid', title: 'US-Tabloid (11" x 17")', format: new mxRectangle(0, 0, 1100, 1700)},
+	        {key: 'executive', title: 'US-Executive (7" x 10")', format: new mxRectangle(0, 0, 700, 1000)},
 	        {key: 'a0', title: 'A0 (841 mm x 1189 mm)', format: new mxRectangle(0, 0, 3300, 4681)},
 	        {key: 'a1', title: 'A1 (594 mm x 841 mm)', format: new mxRectangle(0, 0, 2339, 3300)},
 	        {key: 'a2', title: 'A2 (420 mm x 594 mm)', format: new mxRectangle(0, 0, 1654, 2336)},
@@ -1893,6 +1917,11 @@ PageSetupDialog.getFormats = function()
 	        {key: 'a5', title: 'A5 (148 mm x 210 mm)', format: new mxRectangle(0, 0, 583, 827)},
 	        {key: 'a6', title: 'A6 (105 mm x 148 mm)', format: new mxRectangle(0, 0, 413, 583)},
 	        {key: 'a7', title: 'A7 (74 mm x 105 mm)', format: new mxRectangle(0, 0, 291, 413)},
+	        {key: 'b4', title: 'B4 (250 mm x 353 mm)', format: new mxRectangle(0, 0, 980, 1390)},
+	        {key: 'b5', title: 'B5 (176 mm x 250 mm)', format: new mxRectangle(0, 0, 690, 980)},
+	        {key: '16-9', title: '16:9 (1600 x 900)', format: new mxRectangle(0, 0, 1600, 900)},
+	        {key: '16-10', title: '16:10 (1920 x 1200)', format: new mxRectangle(0, 0, 1920, 1200)},
+	        {key: '4-3', title: '4:3 (1600 x 1200)', format: new mxRectangle(0, 0, 1600, 1200)},
 	        {key: 'custom', title: mxResources.get('custom'), format: null}];
 };
 

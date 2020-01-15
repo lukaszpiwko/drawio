@@ -103,6 +103,21 @@
 		{
 			return model.isVertex(cell) && hasTreeParent(cell);
 		};
+
+		function isTreeMoving(cell)
+		{
+			var result = false;
+			
+			if (cell != null)
+			{
+				var state = graph.view.getState(cell);
+				var style = (state != null) ? state.style : graph.getCellStyle(cell);
+	
+				result = style['treeMoving'] == '1';
+			}
+			
+			return result;
+		};
 	
 		function hasTreeParent(cell)
 		{
@@ -112,8 +127,6 @@
 			{
 				var parent = model.getParent(cell);
 				var pstate = graph.view.getState(parent);
-				
-				var state = graph.view.getState(parent);
 				var style = (pstate != null) ? pstate.style : graph.getCellStyle(parent);
 	
 				result = style['containerType'] == 'tree';
@@ -1072,7 +1085,7 @@
 		{
 			var cells = [initialCell];
 			
-			if (isTreeVertex(initialCell) && !hasLayoutParent(initialCell))
+			if ((isTreeMoving(initialCell) || isTreeVertex(initialCell)) && !hasLayoutParent(initialCell))
 			{
 				// Gets the subtree from cell downwards
 				graph.traverse(initialCell, true, function(vertex, edge)
@@ -1102,7 +1115,7 @@
 		{
 			vertexHandlerInit.apply(this, arguments);
 			
-			if (isTreeVertex(this.state.cell) && this.graph.getOutgoingEdges(this.state.cell).length > 0)
+			if ((isTreeMoving(this.state.cell) || isTreeVertex(this.state.cell)) && this.graph.getOutgoingEdges(this.state.cell).length > 0)
 			{
 				this.moveHandle = mxUtils.createImage(moveImage);
 				this.moveHandle.setAttribute('title', 'Move Subtree');
@@ -1114,13 +1127,11 @@
 				
 				mxEvent.addGestureListeners(this.moveHandle, mxUtils.bind(this, function(evt)
 				{
-					this.graph.graphHandler.start(this.state.cell, mxEvent.getClientX(evt), mxEvent.getClientY(evt));
-					this.graph.graphHandler.cells = this.graph.getSubtree(this.state.cell);
-					this.graph.graphHandler.bounds = this.state.view.getBounds(this.graph.graphHandler.cells);
-					this.graph.graphHandler.pBounds = this.graph.graphHandler.getPreviewBounds(this.graph.graphHandler.cells);
+					this.graph.graphHandler.start(this.state.cell, mxEvent.getClientX(evt), mxEvent.getClientY(evt), this.graph.getSubtree(this.state.cell));
 					this.graph.graphHandler.cellWasClicked = true;
 					this.graph.isMouseTrigger = mxEvent.isMouseEvent(evt);
 					this.graph.isMouseDown = true;
+					ui.hoverIcons.reset();
 					mxEvent.consume(evt);
 				}));
 			}
@@ -1138,6 +1149,18 @@
 					((this.state.width < 40) ? 10 : 0) + 2 + 'px';
 				this.moveHandle.style.top = this.state.y + this.state.height +
 					((this.state.height < 40) ? 10 : 0) + 2 + 'px';
+			}
+		};
+		
+		var vertexHandlerSetHandlesVisible = mxVertexHandler.prototype.setHandlesVisible;
+
+		mxVertexHandler.prototype.setHandlesVisible = function(visible)
+		{
+			vertexHandlerSetHandlesVisible.apply(this, arguments);
+			
+			if (this.moveHandle != null)
+			{
+				this.moveHandle.style.display = (visible) ? '' : 'none';
 			}
 		};
 		
@@ -1176,7 +1199,7 @@
 				    	return sb.createVertexTemplateFromCells([cell], cell.geometry.width,
 					    		cell.geometry.height, cell.value);
 				}),
-				this.addEntry('tree mindmap central idea branch topic', function()
+				this.addEntry('tree mindmap mindmaps central idea branch topic', function()
 				{
 					var mindmap = new mxCell('Mindmap', new mxGeometry(0, 0, 420, 126),
 						'swimlane;html=1;startSize=20;horizontal=1;containerType=tree;');
@@ -1184,56 +1207,56 @@
 					
 					var cell = new mxCell('Central Idea', new mxGeometry(160, 60, 100, 40),
 					    	'ellipse;whiteSpace=wrap;html=1;align=center;' +
-					    	'container=1;recursiveResize=0;treeFolding=1;');
-				    	cell.vertex = true;
-				    	
-				    	var cell2 = new mxCell('Topic', new mxGeometry(320, 40, 80, 20),
-					    	'whiteSpace=wrap;html=1;rounded=1;arcSize=50;align=center;verticalAlign=middle;' +
-			    			'container=1;recursiveResize=0;strokeWidth=1;autosize=1;spacing=4;treeFolding=1;');
-				    	cell2.vertex = true;
-	
-				    	var edge = new mxCell('', new mxGeometry(0, 0, 0, 0), 'edgeStyle=entityRelationEdgeStyle;' +
+					    	'container=1;recursiveResize=0;treeFolding=1;treeMoving=1;');
+			    	cell.vertex = true;
+			    	
+			    	var cell2 = new mxCell('Topic', new mxGeometry(320, 40, 80, 20),
+				    	'whiteSpace=wrap;html=1;rounded=1;arcSize=50;align=center;verticalAlign=middle;' +
+		    			'container=1;recursiveResize=0;strokeWidth=1;autosize=1;spacing=4;treeFolding=1;treeMoving=1;');
+			    	cell2.vertex = true;
+
+			    	var edge = new mxCell('', new mxGeometry(0, 0, 0, 0), 'edgeStyle=entityRelationEdgeStyle;' +
 						'startArrow=none;endArrow=none;segment=10;curved=1;');
 					edge.geometry.relative = true;
 					edge.edge = true;
 	
 					cell.insertEdge(edge, true);
 					cell2.insertEdge(edge, false);
-						
-				    	var cell3 = new mxCell('Branch', new mxGeometry(320, 80, 72, 26),
-				    		'whiteSpace=wrap;html=1;shape=partialRectangle;top=0;left=0;bottom=1;right=0;points=[[0,1],[1,1]];' +
-				    		'strokeColor=#000000;fillColor=none;align=center;verticalAlign=bottom;routingCenterY=0.5;' +
-				    		'snapToPoint=1;container=1;recursiveResize=0;autosize=1;treeFolding=1;');
-				    	cell3.vertex = true;
-	
-				    	var edge2 = new mxCell('', new mxGeometry(0, 0, 0, 0), 'edgeStyle=entityRelationEdgeStyle;' +
+					
+			    	var cell3 = new mxCell('Branch', new mxGeometry(320, 80, 72, 26),
+			    		'whiteSpace=wrap;html=1;shape=partialRectangle;top=0;left=0;bottom=1;right=0;points=[[0,1],[1,1]];' +
+			    		'strokeColor=#000000;fillColor=none;align=center;verticalAlign=bottom;routingCenterY=0.5;' +
+			    		'snapToPoint=1;container=1;recursiveResize=0;autosize=1;treeFolding=1;treeMoving=1;');
+			    	cell3.vertex = true;
+
+			    	var edge2 = new mxCell('', new mxGeometry(0, 0, 0, 0), 'edgeStyle=entityRelationEdgeStyle;' +
 						'startArrow=none;endArrow=none;segment=10;curved=1;');
 					edge2.geometry.relative = true;
 					edge2.edge = true;
 	
 					cell.insertEdge(edge2, true);
 					cell3.insertEdge(edge2, false);
-				    	
-				    	var cell4 = new mxCell('Topic', new mxGeometry(20, 40, 80, 20),
-					    	'whiteSpace=wrap;html=1;rounded=1;arcSize=50;align=center;verticalAlign=middle;' +
-			    			'container=1;recursiveResize=0;strokeWidth=1;autosize=1;spacing=4;treeFolding=1;');
-				    	cell4.vertex = true;
-		
-				    	var edge3 = new mxCell('', new mxGeometry(0, 0, 0, 0), 'edgeStyle=entityRelationEdgeStyle;' +
+			    	
+			    	var cell4 = new mxCell('Topic', new mxGeometry(20, 40, 80, 20),
+				    	'whiteSpace=wrap;html=1;rounded=1;arcSize=50;align=center;verticalAlign=middle;' +
+		    			'container=1;recursiveResize=0;strokeWidth=1;autosize=1;spacing=4;treeFolding=1;treeMoving=1;');
+			    	cell4.vertex = true;
+	
+			    	var edge3 = new mxCell('', new mxGeometry(0, 0, 0, 0), 'edgeStyle=entityRelationEdgeStyle;' +
 						'startArrow=none;endArrow=none;segment=10;curved=1;');
 					edge3.geometry.relative = true;
 					edge3.edge = true;
 		
 					cell.insertEdge(edge3, true);
 					cell4.insertEdge(edge3, false);
-						
-				    	var cell5 = new mxCell('Branch', new mxGeometry(20, 80, 72, 26),
-				    		'whiteSpace=wrap;html=1;shape=partialRectangle;top=0;left=0;bottom=1;right=0;points=[[0,1],[1,1]];' +
-				    		'strokeColor=#000000;fillColor=none;align=center;verticalAlign=bottom;routingCenterY=0.5;' +
-				    		'snapToPoint=1;container=1;recursiveResize=0;autosize=1;treeFolding=1;');
-				    	cell5.vertex = true;
-		
-				    	var edge4 = new mxCell('', new mxGeometry(0, 0, 0, 0), 'edgeStyle=entityRelationEdgeStyle;' +
+					
+			    	var cell5 = new mxCell('Branch', new mxGeometry(20, 80, 72, 26),
+			    		'whiteSpace=wrap;html=1;shape=partialRectangle;top=0;left=0;bottom=1;right=0;points=[[0,1],[1,1]];' +
+			    		'strokeColor=#000000;fillColor=none;align=center;verticalAlign=bottom;routingCenterY=0.5;' +
+			    		'snapToPoint=1;container=1;recursiveResize=0;autosize=1;treeFolding=1;treeMoving=1;');
+			    	cell5.vertex = true;
+	
+			    	var edge4 = new mxCell('', new mxGeometry(0, 0, 0, 0), 'edgeStyle=entityRelationEdgeStyle;' +
 						'startArrow=none;endArrow=none;segment=10;curved=1;');
 					edge4.geometry.relative = true;
 					edge4.edge = true;
@@ -1254,25 +1277,25 @@
 					return sb.createVertexTemplateFromCells([mindmap], mindmap.geometry.width,
 						mindmap.geometry.height, mindmap.value);
 				}),
-				this.addEntry('tree mindmap central idea', function()
+				this.addEntry('tree mindmap mindmaps central idea', function()
 				{
 					var cell = new mxCell('Central Idea', new mxGeometry(0, 0, 100, 40),
-					    	'ellipse;whiteSpace=wrap;html=1;align=center;' +
-					    	'container=1;recursiveResize=0;treeFolding=1;');
-				    	cell.vertex = true;
-				    	
-				    	return sb.createVertexTemplateFromCells([cell], cell.geometry.width,
-				    		cell.geometry.height, cell.value);
+				    	'ellipse;whiteSpace=wrap;html=1;align=center;' +
+				    	'container=1;recursiveResize=0;treeFolding=1;treeMoving=1;');
+			    	cell.vertex = true;
+			    	
+			    	return sb.createVertexTemplateFromCells([cell], cell.geometry.width,
+			    		cell.geometry.height, cell.value);
 				}),
-				this.addEntry('tree mindmap branch', function()
+				this.addEntry('tree mindmap mindmaps branch', function()
 				{
-				    	var cell = new mxCell('Branch', new mxGeometry(0, 0, 80, 20),
-				    		'whiteSpace=wrap;html=1;shape=partialRectangle;top=0;left=0;bottom=1;right=0;points=[[0,1],[1,1]];' +
-				    		'strokeColor=#000000;fillColor=none;align=center;verticalAlign=bottom;routingCenterY=0.5;' +
-				    		'snapToPoint=1;container=1;recursiveResize=0;autosize=1;treeFolding=1;');
-				    	cell.vertex = true;
-		
-				    	var edge = new mxCell('', new mxGeometry(0, 0, 0, 0), 'edgeStyle=entityRelationEdgeStyle;' +
+			    	var cell = new mxCell('Branch', new mxGeometry(0, 0, 80, 20),
+			    		'whiteSpace=wrap;html=1;shape=partialRectangle;top=0;left=0;bottom=1;right=0;points=[[0,1],[1,1]];' +
+			    		'strokeColor=#000000;fillColor=none;align=center;verticalAlign=bottom;routingCenterY=0.5;' +
+			    		'snapToPoint=1;container=1;recursiveResize=0;autosize=1;treeFolding=1;treeMoving=1;');
+			    	cell.vertex = true;
+	
+			    	var edge = new mxCell('', new mxGeometry(0, 0, 0, 0), 'edgeStyle=entityRelationEdgeStyle;' +
 						'startArrow=none;endArrow=none;segment=10;curved=1;');
 					edge.geometry.setTerminalPoint(new mxPoint(-40, 40), true);
 					edge.geometry.relative = true;
@@ -1283,15 +1306,15 @@
 					return sb.createVertexTemplateFromCells([cell, edge], cell.geometry.width,
 						cell.geometry.height, cell.value);
 				}),
-				this.addEntry('tree mindmap sub topic', function()
+				this.addEntry('tree mindmap mindmaps sub topic', function()
 				{
 			   		var cell = new mxCell('Sub Topic', new mxGeometry(0, 0, 72, 26),
-				    		'whiteSpace=wrap;html=1;rounded=1;arcSize=50;align=center;verticalAlign=middle;' +
-				    		'container=1;recursiveResize=0;strokeWidth=1;autosize=1;spacing=4;treeFolding=1;');
-				    	cell.vertex = true;
-		
-				    	var edge = new mxCell('', new mxGeometry(0, 0, 0, 0), 'edgeStyle=entityRelationEdgeStyle;' +
-						'startArrow=none;endArrow=none;segment=10;curved=1;');
+			    		'whiteSpace=wrap;html=1;rounded=1;arcSize=50;align=center;verticalAlign=middle;' +
+			    		'container=1;recursiveResize=0;strokeWidth=1;autosize=1;spacing=4;treeFolding=1;treeMoving=1;');
+			    	cell.vertex = true;
+	
+			    	var edge = new mxCell('', new mxGeometry(0, 0, 0, 0), 'edgeStyle=entityRelationEdgeStyle;' +
+			    		'startArrow=none;endArrow=none;segment=10;curved=1;');
 					edge.geometry.setTerminalPoint(new mxPoint(-40, 40), true);
 					edge.geometry.relative = true;
 					edge.edge = true;
@@ -1306,34 +1329,34 @@
 					var orgchart = new mxCell('Orgchart', new mxGeometry(0, 0, 280, 220),
 						'swimlane;html=1;startSize=20;horizontal=1;containerType=tree;');
 					orgchart.vertex = true;
-					
-				    	var cell = new mxCell('Organization', new mxGeometry(80, 40, 120, 60),
-				    		'whiteSpace=wrap;html=1;align=center;treeFolding=1;' +
-				        	'container=1;recursiveResize=0;');
-					    graph.setAttributeForCell(cell, 'treeRoot', '1');
-				    	cell.vertex = true;
-				    	
-				    	var cell2 = new mxCell('Division', new mxGeometry(20, 140, 100, 60),
-				    		'whiteSpace=wrap;html=1;align=center;verticalAlign=middle;' +
-				    		'container=1;recursiveResize=0;treeFolding=1;');
-				    	cell2.vertex = true;
-		
-				    	var edge = new mxCell('', new mxGeometry(0, 0, 0, 0),
-				    		'edgeStyle=elbowEdgeStyle;elbow=vertical;' +
+				
+			    	var cell = new mxCell('Organization', new mxGeometry(80, 40, 120, 60),
+			    		'whiteSpace=wrap;html=1;align=center;treeFolding=1;treeMoving=1;' +
+			        	'container=1;recursiveResize=0;');
+				    graph.setAttributeForCell(cell, 'treeRoot', '1');
+			    	cell.vertex = true;
+			    	
+			    	var cell2 = new mxCell('Division', new mxGeometry(20, 140, 100, 60),
+			    		'whiteSpace=wrap;html=1;align=center;verticalAlign=middle;' +
+			    		'container=1;recursiveResize=0;treeFolding=1;treeMoving=1;');
+			    	cell2.vertex = true;
+	
+			    	var edge = new mxCell('', new mxGeometry(0, 0, 0, 0),
+			    		'edgeStyle=elbowEdgeStyle;elbow=vertical;' +
 						'startArrow=none;endArrow=none;rounded=0;');
 					edge.geometry.relative = true;
 					edge.edge = true;
 	
 					cell.insertEdge(edge, true);
 					cell2.insertEdge(edge, false);
-				    	
-				    	var cell3 = new mxCell('Division', new mxGeometry(160, 140, 100, 60),
-				    		'whiteSpace=wrap;html=1;align=center;verticalAlign=middle;' +
-				    		'container=1;recursiveResize=0;treeFolding=1;');
-				    	cell3.vertex = true;
-		
-				    	var edge2 = new mxCell('', new mxGeometry(0, 0, 0, 0),
-				    		'edgeStyle=elbowEdgeStyle;elbow=vertical;' +
+			    	
+			    	var cell3 = new mxCell('Division', new mxGeometry(160, 140, 100, 60),
+			    		'whiteSpace=wrap;html=1;align=center;verticalAlign=middle;' +
+			    		'container=1;recursiveResize=0;treeFolding=1;treeMoving=1;');
+			    	cell3.vertex = true;
+	
+			    	var edge2 = new mxCell('', new mxGeometry(0, 0, 0, 0),
+			    		'edgeStyle=elbowEdgeStyle;elbow=vertical;' +
 						'startArrow=none;endArrow=none;rounded=0;');
 					edge2.geometry.relative = true;
 					edge2.edge = true;
@@ -1352,26 +1375,26 @@
 				}),
 				this.addEntry('tree root', function()
 				{
-				    	var cell = new mxCell('Organization', new mxGeometry(0, 0, 120, 60),
-				    		'whiteSpace=wrap;html=1;align=center;treeFolding=1;' +
-				        	'container=1;recursiveResize=0;');
-					    graph.setAttributeForCell(cell, 'treeRoot', '1');
-				    	cell.vertex = true;
-				
-				    	return sb.createVertexTemplateFromCells([cell], cell.geometry.width,
-					    		cell.geometry.height, cell.value);
+			    	var cell = new mxCell('Organization', new mxGeometry(0, 0, 120, 60),
+			    		'whiteSpace=wrap;html=1;align=center;treeFolding=1;treeMoving=1;' +
+			        	'container=1;recursiveResize=0;');
+				    graph.setAttributeForCell(cell, 'treeRoot', '1');
+			    	cell.vertex = true;
+			
+			    	return sb.createVertexTemplateFromCells([cell], cell.geometry.width,
+				    		cell.geometry.height, cell.value);
 				}),
 				this.addEntry('tree division', function()
 				{
-			    		var cell = new mxCell('Division', new mxGeometry(20, 40, 100, 60),
-				    		'whiteSpace=wrap;html=1;align=center;verticalAlign=middle;' +
-				    		'container=1;recursiveResize=0;treeFolding=1;');
-				    	cell.vertex = true;
-				    	
-				    	var edge = new mxCell('', new mxGeometry(0, 0, 0, 0),
-				    		'edgeStyle=elbowEdgeStyle;elbow=vertical;' +
+		    		var cell = new mxCell('Division', new mxGeometry(20, 40, 100, 60),
+			    		'whiteSpace=wrap;html=1;align=center;verticalAlign=middle;' +
+			    		'container=1;recursiveResize=0;treeFolding=1;treeMoving=1;');
+			    	cell.vertex = true;
+			    	
+			    	var edge = new mxCell('', new mxGeometry(0, 0, 0, 0),
+			    		'edgeStyle=elbowEdgeStyle;elbow=vertical;' +
 						'startArrow=none;endArrow=none;rounded=0;');
-				    	edge.geometry.setTerminalPoint(new mxPoint(0, 0), true);
+			    	edge.geometry.setTerminalPoint(new mxPoint(0, 0), true);
 					edge.geometry.relative = true;
 					edge.edge = true;
 	
@@ -1382,25 +1405,25 @@
 				}),
 				this.addEntry('tree sub sections', function()
 				{
-				    	var cell = new mxCell('Sub Section', new mxGeometry(0, 0, 100, 60),
-				    		'whiteSpace=wrap;html=1;align=center;verticalAlign=middle;' +
-				    		'container=1;recursiveResize=0;treeFolding=1;');
-				    	cell.vertex = true;
-		
-				    	var edge = new mxCell('', new mxGeometry(0, 0, 0, 0), 'edgeStyle=orthogonalEdgeStyle;' +
+			    	var cell = new mxCell('Sub Section', new mxGeometry(0, 0, 100, 60),
+			    		'whiteSpace=wrap;html=1;align=center;verticalAlign=middle;' +
+			    		'container=1;recursiveResize=0;treeFolding=1;treeMoving=1;');
+			    	cell.vertex = true;
+	
+			    	var edge = new mxCell('', new mxGeometry(0, 0, 0, 0), 'edgeStyle=orthogonalEdgeStyle;' +
 						'startArrow=none;endArrow=none;rounded=0;targetPortConstraint=eastwest;sourcePortConstraint=northsouth;');
 					edge.geometry.setTerminalPoint(new mxPoint(110, -40), true);
 					edge.geometry.relative = true;
 					edge.edge = true;
 	
 					cell.insertEdge(edge, false);
-		
-				    	var cell2 = new mxCell('Sub Section', new mxGeometry(120, 0, 100, 60),
-				    		'whiteSpace=wrap;html=1;align=center;verticalAlign=middle;' +
-				    		'container=1;recursiveResize=0;treeFolding=1;');
-				    	cell2.vertex = true;
-		
-				    	var edge2 = new mxCell('', new mxGeometry(0, 0, 0, 0), 'edgeStyle=orthogonalEdgeStyle;' +
+	
+			    	var cell2 = new mxCell('Sub Section', new mxGeometry(120, 0, 100, 60),
+			    		'whiteSpace=wrap;html=1;align=center;verticalAlign=middle;' +
+			    		'container=1;recursiveResize=0;treeFolding=1;treeMoving=1;');
+			    	cell2.vertex = true;
+	
+			    	var edge2 = new mxCell('', new mxGeometry(0, 0, 0, 0), 'edgeStyle=orthogonalEdgeStyle;' +
 						'startArrow=none;endArrow=none;rounded=0;targetPortConstraint=eastwest;sourcePortConstraint=northsouth;');
 					edge2.geometry.setTerminalPoint(new mxPoint(110, -40), true);
 					edge2.geometry.relative = true;

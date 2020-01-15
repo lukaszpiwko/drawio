@@ -27,8 +27,8 @@ mxUtils.extend(OneDriveClient, DrawioClient);
  * LATER: If thumbnails are disabled, make sure to replace the
  * existing thumbnail with the placeholder only once.
  */
-OneDriveClient.prototype.clientId = (window.location.hostname == 'test.draw.io') ?
-	'2e598409-107f-4b59-89ca-d7723c8e00a4' : '45c10911-200f-4e27-a666-9e9fca147395';
+OneDriveClient.prototype.clientId = window.DRAWIO_MSGRAPH_CLIENT_ID || ((window.location.hostname == 'test.draw.io') ?
+	'2e598409-107f-4b59-89ca-d7723c8e00a4' : '45c10911-200f-4e27-a666-9e9fca147395');
 
 /**
  * OAuth 2.0 scopes for installing Drive Apps.
@@ -38,8 +38,8 @@ OneDriveClient.prototype.scopes = 'user.read files.readwrite.all offline_access'
 /**
  * OAuth 2.0 scopes for installing Drive Apps.
  */
-OneDriveClient.prototype.redirectUri = 'https://' + window.location.hostname + '/microsoft';
-OneDriveClient.prototype.pickerRedirectUri = 'https://' + window.location.hostname + '/onedrive3.html';
+OneDriveClient.prototype.redirectUri = window.location.protocol + '//' + window.location.host + '/microsoft';
+OneDriveClient.prototype.pickerRedirectUri = window.location.protocol + '//' + window.location.host + '/onedrive3.html';
 
 /**
  * This is the default endpoint for personal accounts
@@ -502,7 +502,7 @@ OneDriveClient.prototype.getFile = function(id, success, error, denyConvert, asL
 			
 			// Handles .vsdx, Gliffy and PNG+XML files by creating a temporary file
 			if (/\.v(dx|sdx?)$/i.test(meta.name) || /\.gliffy$/i.test(meta.name) ||
-				(!this.ui.useCanvasForExport && binary))
+				/\.pdf$/i.test(meta.name) || (!this.ui.useCanvasForExport && binary))
 			{
 				var mimeType = (meta.file != null) ? meta.file.mimeType : null;
 				this.ui.convertFile(meta['@microsoft.graph.downloadUrl'], meta.name, mimeType,
@@ -618,7 +618,8 @@ OneDriveClient.prototype.getFile = function(id, success, error, denyConvert, asL
 			    		error(this.parseRequestText(req));
 			    	}
 				}), binary || (meta.file != null && meta.file.mimeType != null &&
-					meta.file.mimeType.substring(0, 6) == 'image/'));
+					(meta.file.mimeType.substring(0, 6) == 'image/' ||
+					meta.file.mimeType == 'application/pdf')));
 			}
 		}
 		else
@@ -801,74 +802,85 @@ OneDriveClient.prototype.checkExists = function(parentId, filename, askReplace, 
  */
 OneDriveClient.prototype.saveFile = function(file, success, error, etag)
 {
-	var savedData = file.getData();
-	
-	var fn = mxUtils.bind(this, function(data)
+	try
 	{
-		var url = this.getItemURL(file.getId());
-
-		this.writeFile(url + '/content/', data, 'PUT', null, mxUtils.bind(this, function(resp)
+		var savedData = file.getData();
+		
+		var fn = mxUtils.bind(this, function(data)
 		{
-			// Workaround for truncated files in OneDrive is to check if file size is correct
-			try
+			var url = this.getItemURL(file.getId());
+	
+			this.writeFile(url + '/content/', data, 'PUT', null, mxUtils.bind(this, function(resp)
 			{
-				// Returns string length in bytes instead of chars to check returned file size
-				function byteCount(str)
-				{
-					try
-					{
-						return new Blob([str]).size
-					}
-					catch (e)
-					{
-						// ignore
-					}
-					
-					return null;
-				};
+				// Checks for truncated files in OneDrive by comparing expected and actual file size
+				// Apparently in some cases the file is not truncated but the expected and actual
+				// file size do still defer and cases with truncated files have not been detected
+				// ie. there were no cases where the file size was significantly off.
+	//			try
+	//			{
+	//				if (typeof window.Blob !== 'undefined')
+	//				{
+	//
+	//					// Returns string length in bytes instead of chars to check returned file size
+	//					function byteCount(str)
+	//					{
+	//						try
+	//						{
+	//							return new Blob([str]).size
+	//						}
+	//						catch (e)
+	//						{
+	//							// ignore
+	//						}
+	//						
+	//						return null;
+	//					};
+	//					
+	//					var exp = (typeof data === 'string') ? byteCount(data) : data.size;
+	//					
+	//					if (resp != null && exp != null && resp.size != exp)
+	//					{
+	//						// Logs failed save
+	//						var user = this.getUser();
+	//						
+	//						EditorUi.sendReport('Critical: Truncated OneDrive File ' +
+	//							new Date().toISOString() + ':' + '\n\nBrowser=' + navigator.userAgent +
+	//							'\nFile=' + file.getId() + '\nMime=' + file.meta.file.mimeType +
+	//							'\nUser=' + ((user != null) ? user.id : 'unknown') +
+	//							 	'-client_' + ((file.sync != null) ? file.sync.clientId : 'nosync') +
+	//							'\nExpected=' + exp + ' Actual=' + resp.size)
+	//						EditorUi.logError('Critical: Truncated OneDrive File ' + file.getId(),
+	//							null, 'expected_' + exp + '-actual_' + resp.size +
+	//							'-mime_' + file.meta.file.mimeType,
+	//							'user-' + ((user != null) ? user.id : 'unknown') +
+	//						 	((file.sync != null) ? '-client_' + file.sync.clientId : '-nosync'));
+	//					}
+	//				}
+	//			}
+	//			catch (e)
+	//			{
+	//				// ignore
+	//			}
 				
-				if (typeof window.Blob !== 'undefined')
-				{
-					var exp = (typeof data === 'string') ? byteCount(data) : data.size;
-					
-					if (resp != null && exp != null && resp.size != exp)
-					{
-						// Logs failed save
-						var user = this.getUser();
-						
-						EditorUi.sendReport('Critical: Truncated OneDrive File ' +
-							new Date().toISOString() + ':' + '\n\nBrowser=' + navigator.userAgent +
-							'\nFile=' + file.getId() + '\nMime=' + file.meta.file.mimeType +
-							'\nUser=' + ((user != null) ? user.id : 'unknown') +
-							 	'.' + ((file.sync != null) ? file.sync.clientId : 'nosync') +
-							'\nExpected=' + exp + ' Actual=' + resp.size)
-						EditorUi.logError('Critical: Truncated OneDrive File ' + file.getId(),
-							null, 'expected_' + exp + '-actual_' + resp.size +
-							'-mime_' + file.meta.file.mimeType,
-							((user != null) ? user.id : 'unknown') + '.' +
-							((file.sync != null) ? file.sync.clientId : 'nosync'));
-					}
-				}
-			}
-			catch (e)
-			{
-				// ignore
-			}
-			
-			success(resp, savedData);
-		}), error, etag);
-	});
-	
-	if (this.ui.useCanvasForExport && /(\.png)$/i.test(file.meta.name))
-	{
-		this.ui.getEmbeddedPng(mxUtils.bind(this, function(data)
+				success(resp, savedData);
+			}), error, etag);
+		});
+		
+		if (this.ui.useCanvasForExport && /(\.png)$/i.test(file.meta.name))
 		{
-			fn(this.ui.base64ToBlob(data, 'image/png'));
-		}), error, (this.ui.getCurrentFile() != file) ? savedData : null);
+			this.ui.getEmbeddedPng(mxUtils.bind(this, function(data)
+			{
+				fn(this.ui.base64ToBlob(data, 'image/png'));
+			}), error, (this.ui.getCurrentFile() != file) ? savedData : null);
+		}
+		else
+		{
+			fn(savedData);
+		}
 	}
-	else
+	catch (e)
 	{
-		fn(savedData);
+		error(e);
 	}
 };
 
@@ -880,89 +892,112 @@ OneDriveClient.prototype.saveFile = function(file, success, error, etag)
  */
 OneDriveClient.prototype.writeFile = function(url, data, method, contentType, success, error, etag)
 {
-	if (url != null && data != null)
+	try
 	{
-		var doExecute = mxUtils.bind(this, function(failOnAuth)
+		if (url != null && data != null)
 		{
-			var acceptResponse = true;
-			
-			var timeoutThread = window.setTimeout(mxUtils.bind(this, function()
+			//OneDrive has a limit on PUT API of 4MB, larger files needs to use the upload session method
+			if (data.length >= 4000000 /*4MB*/)
 			{
-				acceptResponse = false;
-				error({code: App.ERROR_TIMEOUT, retry: doExecute});
-			}), this.ui.timeout);
-
-			var req = new mxXmlRequest(url, data, method);
-			
-			req.setRequestHeaders = mxUtils.bind(this, function(request, params)
-			{
-				// Space deletes content type header. Specification says "text/plain"
-				// should work but returns an 415 Unsupported Media Type error
-				request.setRequestHeader('Content-Type', contentType || ' ');
-				//TODO This header is needed for moving a file between two different drives. 
-				//		Note: the response is empty when this header is used, also the server may take some time to really execute the request (i.e. async) 
-				//request.setRequestHeader('Prefer', 'respond-async');
-				request.setRequestHeader('Authorization', 'Bearer ' + this.token);
+				error({message: mxResources.get('drawingTooLarge') + ' (' +
+					this.ui.formatFileSize(data.length) + ' / 4 MB)'});
 				
-				if (etag != null)
+				return;
+			}
+			
+			var doExecute = mxUtils.bind(this, function(failOnAuth)
+			{
+				try
 				{
-					request.setRequestHeader('If-Match', etag);
+					var acceptResponse = true;
+					
+					var timeoutThread = window.setTimeout(mxUtils.bind(this, function()
+					{
+						acceptResponse = false;
+						error({code: App.ERROR_TIMEOUT, retry: doExecute});
+					}), this.ui.timeout);
+		
+					var req = new mxXmlRequest(url, data, method);
+					
+					req.setRequestHeaders = mxUtils.bind(this, function(request, params)
+					{
+						// Space deletes content type header. Specification says "text/plain"
+						// should work but returns an 415 Unsupported Media Type error
+						request.setRequestHeader('Content-Type', contentType || ' ');
+						//TODO This header is needed for moving a file between two different drives. 
+						//		Note: the response is empty when this header is used, also the server may take some time to really execute the request (i.e. async) 
+						//request.setRequestHeader('Prefer', 'respond-async');
+						request.setRequestHeader('Authorization', 'Bearer ' + this.token);
+						
+						if (etag != null)
+						{
+							request.setRequestHeader('If-Match', etag);
+						}
+					});
+					
+					req.send(mxUtils.bind(this, function(req)
+					{
+				    	window.clearTimeout(timeoutThread);
+				    	
+				    	if (acceptResponse)
+				    	{
+					    	if (req.getStatus() >= 200 && req.getStatus() <= 299)
+							{
+					    		if (this.user == null)
+								{
+									this.updateUser(this.emptyFn, this.emptyFn, true);
+								}
+					    		
+								success(JSON.parse(req.getText()));
+							}
+							else if (!failOnAuth && req.getStatus() === 401)
+							{
+								this.authenticate(function()
+								{
+									doExecute(true);
+								}, error, failOnAuth);
+							}
+							else
+							{
+								error(this.parseRequestText(req), req);
+							}
+				    	}
+					}), mxUtils.bind(this, function(req)
+					{
+				    	window.clearTimeout(timeoutThread);
+				    	
+				    	if (acceptResponse)
+				    	{
+							error(this.parseRequestText(req));
+				    	}
+					}));
+				}
+				catch (e)
+				{
+					error(e);
 				}
 			});
 			
-			req.send(mxUtils.bind(this, function(req)
+			if (this.token == null || this.tokenExpiresOn - Date.now() < 60000) //60 sec tolerance window
 			{
-		    	window.clearTimeout(timeoutThread);
-		    	
-		    	if (acceptResponse)
-		    	{
-			    	if (req.getStatus() >= 200 && req.getStatus() <= 299)
-					{
-			    		if (this.user == null)
-						{
-							this.updateUser(this.emptyFn, this.emptyFn, true);
-						}
-			    		
-						success(JSON.parse(req.getText()));
-					}
-					else if (!failOnAuth && req.getStatus() === 401)
-					{
-						this.authenticate(function()
-						{
-							doExecute(true);
-						}, error, failOnAuth);
-					}
-					else
-					{
-						error(this.parseRequestText(req), req);
-					}
-		    	}
-			}), mxUtils.bind(this, function(req)
+				this.authenticate(function()
+				{
+					doExecute(true);
+				}, error);
+			}
+			else
 			{
-		    	window.clearTimeout(timeoutThread);
-		    	
-		    	if (acceptResponse)
-		    	{
-					error(this.parseRequestText(req));
-		    	}
-			}));
-		});
-		
-		if (this.token == null || this.tokenExpiresOn - Date.now() < 60000) //60 sec tolerance window
-		{
-			this.authenticate(function()
-			{
-				doExecute(true);
-			}, error);
+				doExecute(false);
+			}
 		}
 		else
 		{
-			doExecute(false);
+			error({message: mxResources.get('unknownError')});
 		}
 	}
-	else
+	catch (e)
 	{
-		error({message: mxResources.get('unknownError')});
+		error(e);
 	}
 };
 
